@@ -1,0 +1,77 @@
+library (bcmaps)
+library (ggmap)
+library (lubridate)
+library (ggplot2)
+library (data.table)
+library (ggrepel)
+library (dplyr)
+library (tidyverse)
+
+wolves <- read.csv ("/Users/alix/Downloads/Alberta-BC Wolves.csv")
+# Always inspect your data
+str(wolves) 
+summary (wolves)
+
+#one way to plot that data:
+ggplot() + 
+  geom_sf(data = bc_neighbours(), mapping = aes(fill = name)) + 
+  geom_point(data=wolves, aes(x = location.long, y = location.lat, colour='black')) + 
+  coord_sf(datum = NA) +
+  scale_fill_viridis_d(name = "Jurisdiction") +
+  theme_minimal()
+
+# There are too many points and it's hard to read
+# To select a random subset of 100 samples:
+  random_100wolves<-wolves[sample(nrow(wolves), 100), ]
+  
+ # Or since a same wolf (you can know by the tag) was observed several times
+ # we could group observations by individual:
+ 
+ each_wolf<-wolves %>% 
+  group_by(tag.local.identifier) %>% # this is gruing data by tag
+  summarise(mean_long=mean(location.long), #and we obtain the mean coordinates for each individual
+    mean_lat=mean(location.lat),
+   count=n()) # as well as the number of times that each tag is repeated in the data set (so, number of observations)
+   
+as.data.frame(each_wolf)
+
+#inspect both data subsets
+
+# A very simple map
+# you need to know your maximum coordinates, which you canobtain apllying the functions mean() and max() to your coordinates columns
+
+p<- get_map(location = c(-122, 50, -114,  56), source = "osm") # you can add differnt zoom values after source, like zoom = 10
+
+ggmap(p)+ 
+  geom_point (data=random_100wolves, aes(x=location.long, y=location.lat), size=0.05) #change the location of "size=" and see what happens
+ 
+# What if we want to locate the regions with more observations?
+# One way to do that is looking for density of observations
+ 
+ ggmap(p) + 
+  stat_density2d(data=wolves, 
+                 aes(x = location.long, y = location.lat, fill = ..level.., alpha = 0.25), geom = "polygon")+ # geom can have different kinds like geom = "density2d"
+  geom_point(data=wolves[which(wolves$individual.local.identifier=="B042"),], 
+             aes(x = location.long, y = location.lat, stroke = 2), size =0.05, color="darkred")  
+             
+# Now try that with the data set that is grouped by tag
+# What is you wanted that each point reflected the number of observations
+# in the data set grouped by tag that is represented in the column count
+  
+  
+# If you wanna focus on a specific region in the map you can just change your coordinates
+  
+p_zoom<- get_map(location = c(-121, 53, -117,  55), source = "osm", maptype = "satellite") 
+ggmap(p_zoom) + 
+  stat_density2d(data=each_wolf, 
+                 aes(x = mean_long, y = mean_lat, fill = ..level.., alpha = 0.25), geom = "polygon")+ #geom = "density2d"
+  geom_point(data=each_wolf, 
+             aes(x = mean_long, y = mean_lat, stroke = 2,color=factor(tag.local.identifier), size=count))
+
+# This package should help you add a scale bar and a north to  your maps
+install.packages('ggsn')
+library (ggsn)
+
+  
+
+  
