@@ -1,0 +1,170 @@
+
+# First things first: 
+# Have you downloaded the dataset?
+# Where is it stored?
+# Where is this script?
+
+getwd()       # this tells you where you are
+list.files()  # this lets you see the files inside the folder where you are
+
+# Now, load your packages
+# the order in which you load them can affect some functions with the same name from other packages
+# Don't loose your head over this. Usually when a function that you always use stops working is because 
+# a function is 'masked' by a function with the same name from another package that was loaded after.
+# Thi can be fixed by wirtting <package.name>::<function> and run as always
+
+# library (bcmaps)-> we won't use this one today but if you have data in BC I recommend you chek this one out at: https://github.com/bcgov/bcmaps
+
+library (ggmap)
+library (lubridate)
+library (ggplot2)
+library (data.table)
+library (ggrepel)
+library (dplyr)
+library (tidyverse)
+
+# Now, load your data:
+wolves <- read.csv ("/Users/alix/Downloads/Alberta-BC Wolves.csv") # yes, you have to change this to the location of your file
+
+# Always inspect your data
+dim(wolves)   # what is this telling you?
+str(wolves) 
+summary (wolves)
+# What is(are) the coordinate system(s) in this data set?
+
+# Let's add a fake column of month of observation for later
+month <- sample(c("januray","may", "june"), 174443, replace=TRUE, prob = c(0.03, 0.57, 0.4))
+wolves$month<- month
+# Did this work?
+# Let's make sure it is a factor
+wolves$month<-as.factor(wolves$month)
+
+# The data set is so big!
+# But you can always subset...
+# To select a random subset of 100 samples:
+
+random_100wolves<-wolves[sample(nrow(wolves), 100), ]
+  
+ # Or since a same wolf (you can know by the tag identifier) was observed several times
+ # we could group observations by individual:
+ 
+ each_wolf<-wolves %>%                        # this is the beauty of dplyr
+  group_by(tag.local.identifier) %>%          # this is grouping data by tag
+  summarise(mean_long=mean(location.long),    # with this we can calculate the mean coordinates for each individual
+    mean_lat=mean(location.lat),
+   count=n())                                 # as well as the number of times that each tag is repeated in the data set (n=number of observations)
+   
+as.data.frame(each_wolf)
+
+# Now you have two subsets from the same data. Inspect both data subsets. What are the differences?
+
+############################################
+# HOW TO MAKE A VERY SIMPLE MAP WITH ggmap:
+# First, you need to know your maximum coordinates, which you canobtain apllying the functions mean() and max() to your coordinate columns
+# What are the extreme coordinates?
+
+p<- get_map(location = c(-122, 50, -114,  56), source = "osm") # you can use add differnt zoom values after source, like zoom = 10
+ggmap(p)+ 
+  geom_point (data=random_100wolves, aes(x=location.long, y=location.lat), size=0.05) 
+  
+# Change the location of "size=" inside the aes parenthesis and see how that affects the size of your points
+# Change the "source" and "zoom" of the get_map function and see what happens
+# Use different data subsets.
+# this is in the style of ggplot so it's easy to play around and change style like labels, text and colour.
+# and there are many resources on the internet, and there are color sets for color blind people.
+
+# What if we want to locate the regions with more observations?
+# One way to do that is looking for density of observations
+ 
+ ggmap(p) + 
+  stat_density2d(data=wolves, 
+                 aes(x = location.long, y = location.lat, fill = ..level.., alpha = 0.25), geom = "polygon")+ # geom can have different kinds like geom = "density2d"
+  geom_point(data=wolves[which(wolves$individual.local.identifier=="B042"),], 
+             aes(x = location.long, y = location.lat, stroke = 2), size =0.05, color="darkred") +
+             theme(legend.position = "none")
+             
+# Now try that with the data set that is grouped by tag
+
+
+# What if you wanted that each point reflected the number of observations per tag?
+# in the data set grouped by tag that is represented in the column count
+# hint: change size of geom_point
+# What happens if you want each tag to be represented by a different colour?  
+
+  
+# If you wanna focus on a specific region in the map you can just change your coordinates
+p_zoom<- get_map(location = c(-121, 53, -117,  55), source = "osm") 
+ggmap(p_zoom) + 
+  stat_density2d(data=each_wolf, 
+                 aes(x = mean_long, y = mean_lat, fill = ..level.., alpha = 0.25), geom = "polygon")+ #geom = "density2d"
+  geom_point(data=each_wolf, 
+             aes(x = mean_long, y = mean_lat, stroke = 2,color=factor(tag.local.identifier), size=count))
+ 
+# Now try with theme(legend.position = "none")
+
+# Let's add a fake column with month data
+month <- sample(c("january","may", "june"), 174443, replace=TRUE, prob = c(0.15, 0.57, 0.28))
+wolves$month<- month
+# Did this work?
+# Are you sure? 
+# Ok, let's make sure it is a factor
+wolves$month<-as.factor(wolves$month)
+# Now, let's get 1,000 random points
+
+thousand_wolves<-wolves[sample(nrow(wolves), 1000), ] 
+str(thousand_wolves)
+
+# Arrange by tag
+each_wolf_month<-thousand_wolves %>%
+  group_by(tag.local.identifier) %>%
+  summarise(mean_long=mean(location.long),
+            mean_lat=mean(location.lat),
+            count=n(),
+            january= sum (month=='january'),
+            may= sum (month=='may'),
+            june= sum (month=='june'))
+as.data.frame(each_wolf_month) 
+
+
+# Let's plot pie chart
+ggmap(p) + 
+scale_fill_manual(
+  breaks = c("january", "may", "june"),
+  labels = c("january", "may", "june"),
+  values = c("january" = "black",
+             "may" = "#FC8D62",
+             "june" = "#E7298A") )+
+  geom_scatterpie(data = each_wolf_month,
+                  aes(mean_long, mean_lat,r= sqrt(count)/20 ), # r= sqrt(count)/200 #group=tag.local.identifier
+                  cols = c("january", "may", "june" ), 
+                  color=NA,
+                  alpha = 0.7) +
+   theme(legend.position = "right")
+
+# You can play around with changing the number of wolves, the zoom of the map, the aesthetics of it, etc...
+
+# Another way to visualize this same data set is by making the
+# each_wolf_month subset into long format
+each_wolf_month_long<- each_wolf_month%>%
+  gather(month, count, january:june)
+
+# plot
+ggmap(p)+ 
+  geom_point (data=each_wolf_month_long, aes(x=mean_long, y=mean_lat), size=0.05)+
+  facet_wrap(~month)
+
+
+#############
+# This stopped working :(
+#one way to plot that data: ## Adrian! this stopped working so I think I have to remove it. I don't know what went wrong.:(
+ggplot() + 
+  geom_sf(data = bc_neighbours(), mapping = aes(fill = name)) + 
+  geom_point(data=wolves, aes(x = location.long, y = location.lat, colour='black')) + 
+  coord_sf(datum = NA) +
+  scale_fill_viridis_d(name = "Jurisdiction") +
+  theme_minimal()
+
+# There are too many points and it's hard to read
+# This package should help you add a scale bar and a north to  your maps
+install.packages('ggsn')
+library (ggsn)
