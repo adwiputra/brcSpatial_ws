@@ -92,10 +92,11 @@ movementData$month<- month
 # Are you sure?
 # Let's make sure it is a factor
 movementData$month<-as.factor(movementData$month)
+# Maybe you can add another fake column with some other categorical variable and play around with facet_wrap(~)
 
-# The data set is so big!
 
 ######## SUBSET ##########
+# The data set is so big!
 # But you can always subset...
 # To select a random subset of 100 samples:
 
