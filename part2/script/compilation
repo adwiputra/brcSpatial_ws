@@ -22,33 +22,89 @@ library (data.table)
 library (ggrepel)
 library (dplyr)
 library (tidyverse)
+library(rgdal)
+library(raster)
 
+# To use google maps we are akes for a key. Here is one:]
+register_google(key = "AIzaSyDvpJHmU1qbEdJLqgF-PwgxKcPf0BvtThE")
+
+####### FUNCTIONS #######
+# Let's do some functions
+   points_to_line <- function(data, long, lat, id_field = NULL, sort_field = NULL) {
+     
+     # Convert to SpatialPointsDataFrame
+     coordinates(data) <- c(long, lat)
+     
+     # If there is a sort field...
+     if (!is.null(sort_field)) {
+       if (!is.null(id_field)) {
+         data <- data[order(data[[id_field]], data[[sort_field]]), ]
+       } else {
+         data <- data[order(data[[sort_field]]), ]
+       }
+     }
+     
+     # If there is only one path...
+     if (is.null(id_field)) {
+       
+       lines <- SpatialLines(list(Lines(list(Line(data)), "id")))
+       
+       return(lines)
+       
+       # Now, if we have multiple lines...
+     } else if (!is.null(id_field)) {  
+       
+       # Split into a list by ID field
+       paths <- sp::split(data, data[[id_field]])
+       
+       sp_lines <- SpatialLines(list(Lines(list(Line(paths[[1]])), "line1")))
+       
+       # I like for loops, what can I say...
+       for (p in 2:length(paths)) {
+         id <- paste0("line", as.character(p))
+         l <- SpatialLines(list(Lines(list(Line(paths[[p]])), id)))
+         sp_lines <- spRbind(sp_lines, l)
+       }
+       
+       return(sp_lines)
+     }
+   }
+
+
+ 
+###### LOAD DATA #####
 # Now, load your data:
-wolves <- read.csv ("/Users/alix/Downloads/Alberta-BC Wolves.csv") # yes, you have to change this to the location of your file
+movementData <- read.csv ("/Users/alix/Downloads/Alberta-BC Wolves.csv") # yes, you have to change this to the location of your file
 
 # Always inspect your data
-dim(wolves)   # what is this telling you?
-str(wolves) 
-summary (wolves)
+movementData %>% head()
+
+dim (movementData)   # what is this telling you?
+str (movementData) 
+summary (movementData)
 # What is(are) the coordinate system(s) in this data set?
 
-# Let's add a fake column of month of observation for later
+### ADD MONTH COLUMN #####
+# Let's add a fake column of month of observation (you will see later what this is for)
 month <- sample(c("januray","may", "june"), 174443, replace=TRUE, prob = c(0.03, 0.57, 0.4))
-wolves$month<- month
+movementData$month<- month
 # Did this work?
+# Are you sure?
 # Let's make sure it is a factor
-wolves$month<-as.factor(wolves$month)
+movementData$month<-as.factor(movementData$month)
 
 # The data set is so big!
+
+######## SUBSET ##########
 # But you can always subset...
 # To select a random subset of 100 samples:
 
-random_100wolves<-wolves[sample(nrow(wolves), 100), ]
+random_100<-movementData[sample(nrow(movementData), 100), ]
   
  # Or since a same wolf (you can know by the tag identifier) was observed several times
  # we could group observations by individual:
  
- each_wolf<-wolves %>%                        # this is the beauty of dplyr
+ each_wolf<-movementData %>%                        # this is the beauty of dplyr
   group_by(tag.local.identifier) %>%          # this is grouping data by tag
   summarise(mean_long=mean(location.long),    # with this we can calculate the mean coordinates for each individual
     mean_lat=mean(location.lat),
@@ -60,12 +116,13 @@ as.data.frame(each_wolf)
 
 ############################################
 # HOW TO MAKE A VERY SIMPLE MAP WITH ggmap:
+# This does not require google's Key
 # First, you need to know your maximum coordinates, which you canobtain apllying the functions mean() and max() to your coordinate columns
 # What are the extreme coordinates?
 
 p<- get_map(location = c(-122, 50, -114,  56), source = "osm") # you can use add differnt zoom values after source, like zoom = 10
 ggmap(p)+ 
-  geom_point (data=random_100wolves, aes(x=location.long, y=location.lat), size=0.05) 
+  geom_point (data=random_100, aes(x=location.long, y=location.lat), size=0.05) 
   
 # Change the location of "size=" inside the aes parenthesis and see how that affects the size of your points
 # Change the "source" and "zoom" of the get_map function and see what happens
@@ -74,17 +131,16 @@ ggmap(p)+
 # and there are many resources on the internet, and there are color sets for color blind people.
 
 # What if we want to locate the regions with more observations?
-# One way to do that is looking for density of observations
+# One way to do that is looking for density of ALL observations
  
  ggmap(p) + 
-  stat_density2d(data=wolves, 
+  stat_density2d(data=movementData, 
                  aes(x = location.long, y = location.lat, fill = ..level.., alpha = 0.25), geom = "polygon")+ # geom can have different kinds like geom = "density2d"
   geom_point(data=wolves[which(wolves$individual.local.identifier=="B042"),], 
              aes(x = location.long, y = location.lat, stroke = 2), size =0.05, color="darkred") +
              theme(legend.position = "none")
              
 # Now try that with the data set that is grouped by tag
-
 
 # What if you wanted that each point reflected the number of observations per tag?
 # in the data set grouped by tag that is represented in the column count
@@ -111,7 +167,7 @@ wolves$month<- month
 wolves$month<-as.factor(wolves$month)
 # Now, let's get 1,000 random points
 
-thousand_wolves<-wolves[sample(nrow(wolves), 1000), ] 
+thousand_wolves<-movementData[sample(nrow(movementData), 1000), ] 
 str(thousand_wolves)
 
 # Arrange by tag
@@ -154,12 +210,46 @@ ggmap(p)+
   facet_wrap(~month)
 
 
+#### A MORE PROFESSIONAL WAY OF DOING IT#####
+# Let's use our functions
+# convert into spatialPoints dataframe WGS 84
+movementSpatialData <- movementData %>% select(location.long, location.lat) %>% SpatialPointsDataFrame(data = movementData, proj4string = CRS("+init=epsg:32648"))
+
+# identify the UTM zones of the data >> convert the data into BC Albers
+UTM_z <- movementData %>% select(utm.zone) %>% pull() %>% unique()
+# since there are more than 1 UTM zone for the area of interest, select the appropriate projection system, i.e. BC Albers (rationale desc. here: https://ibis.geog.ubc.ca/~brian/Course.Notes/bceprojection.html)
+movementSpatialData <- movementSpatialData %>% spTransform(CRS("+init=epsg:3005"))
+
+mapCentre <- c(sum(movementData$location.long)/nrow(movementData), sum(movementData$location.lat)/nrow(movementData))
+# Playing with visualization
+mapLayout <- ggmap(get_googlemap(center = c(lon = mapCentre[1], lat = mapCentre[2]),
+                         zoom = 6, scale = 2,
+                         maptype ='terrain',
+                         color = 'bw'))
+# zoom only accepts integer; 
+# mapLayout <- ggmap(get_map(mapCentre, source = "osm")) # does not work, unfortunately
+simpleLayout <- mapLayout + geom_point(aes(x = location.long, y = location.lat, colour = individual.local.identifier), data = movementData, size = 0.5) + theme(legend.position = "bottom") + coord_fixed() #+ geom_path(data = wolfLines, aes(x = long, y = lat, group = group))
+
+print(simpleLayout)
+
+# play around with transparency display
+densLayout <- mapLayout + geom_point(aes(x = location.long, y = location.lat), data = movementData, alpha=0.15, size = 0.5, colour = "yellow3") + theme(legend.position="bottom")
+
+# heatMap
+heatLayout <- mapLayout + stat_density2d(
+  aes(x = location.long, y = location.lat, fill = ..level.., alpha = 0.1),
+  size = 0.01, bins = 30, data = movementData,
+  geom = "polygon"
+)
+
+
+
 #############
 # This stopped working :(
 #one way to plot that data: ## Adrian! this stopped working so I think I have to remove it. I don't know what went wrong.:(
 ggplot() + 
   geom_sf(data = bc_neighbours(), mapping = aes(fill = name)) + 
-  geom_point(data=wolves, aes(x = location.long, y = location.lat, colour='black')) + 
+  geom_point(data=movementData, aes(x = location.long, y = location.lat, colour='black')) + 
   coord_sf(datum = NA) +
   scale_fill_viridis_d(name = "Jurisdiction") +
   theme_minimal()
