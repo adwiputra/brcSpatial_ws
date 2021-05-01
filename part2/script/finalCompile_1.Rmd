@@ -1,0 +1,153 @@
+---
+title: "Vector Layer"
+# author: "Adrian Dwiputra & Mariana Alicia Pascual R."
+date: "4/30/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(sf)                 # spatial vector data manipulation
+library(tmap)               # map production & tiled web map
+library(dplyr)              # non GIS specific (tabular data manipulation)
+library(magrittr)           # non GIS specific (pipes)
+library(purrr)              # non GIS specific (functional programming)
+library(rnaturalearth)      # basemap data access functions
+library(rnaturalearthdata)  # basemap data
+library(mapview)            # tiled web map
+library(grid)               # (part of base R) used to create inset map
+library(ggplot2)            # alternative to tmap for map production
+library(ggspatial)          # spatial framework for ggplot2
+library(terra)              # gridded spatial data manipulation
+library(ggmap)              # download basemap data
+library(tmaptools)
+library(magick)             # wrapper around ImageMagick STL
+library(ggrepel)           
+library(tidyverse)
+```
+
+## Intro
+
+Lorem ipsum...
+
+### Before starting, please download the data at the following link: <https://drive.google.com/file/d/1UpGL2WbUNjG06EmqJYvUPGsRybBIJWdY/view?usp=sharing> and modify the input data imports below accordingly.
+
+
+## Input Data
+
+Description about the inputs' sources here. You must modify the input path according to the location where you store the required input data. Paths are absolute, in this case.
+
+```{r inputs, echo=FALSE}
+movementData <- read.csv("E:/pers_plan/ubc/Teaching_assistantship/year_02/BRC/projects/brcSpatial_ws/part2/data/ggplotVisualize/ABoVE_ Hebblewhite Alberta-BC Wolves.csv")
+movementData %>% head()
+# supporting data 1: road network
+BCroadData.spatial <- st_read("E:/pers_plan/ubc/Teaching_assistantship/year_02/BRC/projects/brcSpatial_ws/part2/data/ggplotVisualize/BCrds.shp")
+ABroadData.spatial <- st_read("E:/pers_plan/ubc/Teaching_assistantship/year_02/BRC/projects/brcSpatial_ws/part2/data/ggplotVisualize/ABrds.shp")
+# supporting data 2: park areas
+parkData.spatial <- st_read("E:/pers_plan/ubc/Teaching_assistantship/year_02/BRC/projects/brcSpatial_ws/part2/data/ggplotVisualize/CANprr.shp")
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+We have loaded the movement data as a data.frame. Now, we'd like to convert them into a spatial data, or simple feature, to be more specific.
+
+```{r spatialize}
+# Creating sf object from the data.frame
+movementData.spatial <- movementData %>% st_as_sf(coords = c("location.long", "location.lat"), crs = 4326)
+
+# Checking the consistency of the CRS across data
+# Loop for each spatial data
+spatialData <- ls(pattern = "spatial$") %>% setdiff("movementData.spatial")  # exclude the movement data as reference
+
+crs_check <- lapply(spatialData, function(x){
+  eval(substitute(st_crs(movementData.spatial) == st_crs(i), list(i = as.name(x))))
+}) %>% unlist()
+names(crs_check) <- spatialData
+print(crs_check)
+# if all TRUE, then we can move on.. Can we?
+spatialData <- c(spatialData, "movementData.spatial")
+# Project all data, including the movement data into BC Albers Projection (NAD83)
+for(s in 1:length(spatialData)){
+  eval(parse(text = paste0(spatialData[s], "<- st_transform(", spatialData[s], ", crs = 3005)")))
+}
+
+print(crs(movementData.spatial))
+
+
+# Simple plotting.. Remember that order matters
+tm_shape(parkData.spatial) + tm_polygons() + tm_shape(movementData.spatial) + tm_dots()
+# 
+
+
+```
+
+For a more efficient processing, let's clip the spatial dataset according to the extent of our movement data
+
+```{r clipping}
+# Plotting using predefined bounding box
+# try plotting again
+area_bbox <- st_as_sfc(st_bbox(movementData.spatial))
+tm_shape(parkData.spatial, bbox = area_bbox) + tm_polygons() + tm_shape(movementData.spatial) + tm_dots()
+# parks Data
+parkData.spatial <- st_intersection(parkData.spatial, area_bbox)
+# roads Data
+allRoads.spatial <- BCroadData.spatial %>% rbind(ABroadData.spatial) %>% st_intersection(area_bbox) # alternatively, use st_union (slower)
+
+```
+
+## Basic Data Manipulation: Data Type Conversion, and Identify the movements that intersect road network
+
+You can also embed plots, for example:
+
+```{r conversion, echo=FALSE}
+movementData.lineString <- movementData.spatial %>% group_by(individual.local.identifier) %>% arrange(event.id, .by_group = TRUE)%>% summarise(do_union = FALSE) %>%  st_cast("LINESTRING")
+# intersection of roads and wolf paths
+intersectMoveRoad <- st_intersection(movementData.lineString, allRoads.spatial) %>% st_cast("MULTIPOINT")
+```
+
+## Basic Data Analysis: Center Point and Kernel Density
+
+```{r centerPoint, echo=TRUE}
+movementData.centPoints <- movementData.lineString %>% group_by(individual.local.identifier) %>% st_centroid()
+
+```
+
+
+## Basic Visualization with ggplot2
+
+```{r visualization, echo=TRUE}
+# with ggplot
+# requires x and y columns to create the heatmap:
+intersect.coords <- intersectMoveRoad %>% st_coordinates() %>% as.data.frame() %>% dplyr::select(-3)
+# similar columns required to assign labels appropriately
+movementData.centPoints <- movementData.centPoints %>% st_coordinates() %>% as.data.frame() %>% bind_cols(movementData.centPoints)
+mapLayout <- ggplot() + geom_sf(data = parkData.spatial) + stat_density2d(
+  aes(x = X, y = Y, fill = ..level.., alpha = 0.1),
+  size = 0.01, bins = 30, data = intersect.coords,
+  geom = "polygon"
+)  + scale_fill_continuous(type = "viridis") + geom_sf(aes(alpha = 0.1), data = intersectMoveRoad, colour = "brown1", size = 0.1) +
+  geom_label_repel(aes(x = X, y = Y,
+                       label = individual.local.identifier), data = movementData.centPoints,
+                   family = 'Segoe', 
+                   size = 3, 
+                   box.padding = 0.2, point.padding = 0.3,
+                   segment.color = 'grey50') + coord_sf(datum=st_crs(3005)) + labs(title = "Wolves Movement on Roads") +
+  annotation_scale(location = "bl", width_hint = 0.4) +
+  annotation_north_arrow(location = "tr", which_north = "true",
+                         pad_x = unit(0.1, "in"), pad_y = unit(0.1, "in"),
+                         style = north_arrow_fancy_orienteering) + theme_bw() + theme(plot.title = element_text(hjust = 0.5)) + scale_alpha(guide = 'none')
+
+print(mapLayout)
+```
+
+
+
+## Basic Data Analysis: Distance Calculation
+
+
+
+## Not so basic visualization with tmap
+```{r tmap, echo=TRUE}
+osm_site <- read_osm(area_bbox)
+tm_shape(osm_site) + tm_rgb() + tm_shape(parkData.spatial) + tm_polygons() + tm_shape(intersectMoveRoad) + tm_dots()
+```
