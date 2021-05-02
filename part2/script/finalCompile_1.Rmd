@@ -1,12 +1,33 @@
 ---
 title: "Vector Layer"
 # author: "Adrian Dwiputra & Mariana Alicia Pascual R."
-date: "4/30/2021"
+bibliography: references.bib
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Intro
+
+This tutorial is developed to be an exercise that we can use to practice the vector data processing skills delivered in the first part of the workshop. The processing steps covered here include vector data import, conversion, union, clip, and intersect. These steps are basic yet essential in many spatial analyses that you may do on your own. We will also visualize the spatial data using the ggplot2 package and attach labels, heatmap polygon, and other visual components in the final map.
+
+With the spatial analysis tools, we investigate the locations where wolves (Canis lupus) in British Columbia and Alberta traverse across or along roads. Despite a higher chance of human-encounter, wolves often move along roads [@Moskowitz2013]. We are going to identify locations where such phenomenon occurred most often according to several individuals’ tracks collected in previous studies. This information helps minimize the risk of an adverse outcome from wolf-human encounters, for example, by placing road signs at points where wolf activities were frequent.
+
+### Before starting, please download the data at the following link: < and modify the input data imports below accordingly.
+
+
+
+## Input Data
+
+We are going to work with several spatial datasets, namely wolf tracking data (points), road data (lines), and park boundary data (polygons). These data are available online either to the public with registered accounts (wolf data) or all UBC-affiliated individuals (road and park boundary data). For this tutorial, you can access all of the required data from the following [link](https://drive.google.com/file/d/121BoCSOhasXMs6zBzGFAaiNqalNyhjU1/view?usp=sharing).
+
+As the first step, we are going to load the R packages and the data. Please note that you will have to modify the input data commands according to the location of the data in your machine.
+
+
+```{r inputs, echo = TRUE, warning = FALSE, message = FALSE}
+# Load relevant libraries
 library(sf)                 # spatial vector data manipulation
 library(tmap)               # map production & tiled web map
 library(dplyr)              # non GIS specific (tabular data manipulation)
@@ -20,24 +41,12 @@ library(ggplot2)            # alternative to tmap for map production
 library(ggspatial)          # spatial framework for ggplot2
 library(terra)              # gridded spatial data manipulation
 library(ggmap)              # download basemap data
-library(tmaptools)
+library(tmaptools)          # misc. tools in mapping with tmap
 library(magick)             # wrapper around ImageMagick STL
-library(ggrepel)           
+library(ggrepel)            # Neatly display labels on our map in ggplot
 library(tidyverse)
-```
+# library(rgeos)
 
-## Intro
-
-Lorem ipsum...
-
-### Before starting, please download the data at the following link: <https://drive.google.com/file/d/1UpGL2WbUNjG06EmqJYvUPGsRybBIJWdY/view?usp=sharing> and modify the input data imports below accordingly.
-
-
-## Input Data
-
-Description about the inputs' sources here. You must modify the input path according to the location where you store the required input data. Paths are absolute, in this case.
-
-```{r inputs, echo=FALSE}
 movementData <- read.csv("E:/pers_plan/ubc/Teaching_assistantship/year_02/BRC/projects/brcSpatial_ws/part2/data/ggplotVisualize/ABoVE_ Hebblewhite Alberta-BC Wolves.csv")
 movementData %>% head()
 # supporting data 1: road network
@@ -49,16 +58,20 @@ parkData.spatial <- st_read("E:/pers_plan/ubc/Teaching_assistantship/year_02/BRC
 
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
 
-We have loaded the movement data as a data.frame. Now, we'd like to convert them into a spatial data, or simple feature, to be more specific.
+We have imported all of the required data now. Apparently, not all of the inputs are vector data. The tracking data is stored as a data.frame. We are going to convert the data.frame into an sf object using a function st_as_sf that takes the data.frame as an input. To develop the vector data, we have to provide two arguments: the columns containing the X and Y coordinates and the coordinate reference system to let the function know the properties of the coordinates, i.e., datum, unit, etc.
 
-```{r spatialize}
+```{r spatialize, echo = TRUE, warning = FALSE, message = FALSE}
 # Creating sf object from the data.frame
 movementData.spatial <- movementData %>% st_as_sf(coords = c("location.long", "location.lat"), crs = 4326)
 
 # Checking the consistency of the CRS across data
 # Loop for each spatial data
 spatialData <- ls(pattern = "spatial$") %>% setdiff("movementData.spatial")  # exclude the movement data as reference
+```
 
+After this, at the beginning of our spatial analysis, we should always check the consistency of the coordinate reference system used in all of our data. Based on the assessment, we should decide if CRS conversions are necessary before going forward.
+
+```{r assess, echo = TRUE, warning = FALSE, message = FALSE}
 crs_check <- lapply(spatialData, function(x){
   eval(substitute(st_crs(movementData.spatial) == st_crs(i), list(i = as.name(x))))
 }) %>% unlist()
@@ -81,9 +94,9 @@ tm_shape(parkData.spatial) + tm_polygons() + tm_shape(movementData.spatial) + tm
 
 ```
 
-For a more efficient processing, let's clip the spatial dataset according to the extent of our movement data
+For more efficient processing, let’s clip the spatial dataset according to the extent of our movement data.
 
-```{r clipping}
+```{r clipping, echo = TRUE, warning = FALSE, message = FALSE}
 # Plotting using predefined bounding box
 # try plotting again
 area_bbox <- st_as_sfc(st_bbox(movementData.spatial))
@@ -95,19 +108,23 @@ allRoads.spatial <- BCroadData.spatial %>% rbind(ABroadData.spatial) %>% st_inte
 
 ```
 
-## Basic Data Manipulation: Data Type Conversion, and Identify the movements that intersect road network
+## Basic Data Manipulation: Data Type Conversion, and Intersection Identification
 
-You can also embed plots, for example:
+We can see that the tracking data are recorded in an interval of some time. We will assume that the tracked individuals move in straight trajectories between the subsequent locations. To apply this assumption in our data, we are converting the movement points into polylines.
 
-```{r conversion, echo=FALSE}
+With the movement data as lines, we can estimate the locations where wolves were likely to traverse across or along roads even though the recorded locations do not intersect the road segments directly.
+
+```{r conversion, echo = TRUE, warning = FALSE, message = FALSE}
 movementData.lineString <- movementData.spatial %>% group_by(individual.local.identifier) %>% arrange(event.id, .by_group = TRUE)%>% summarise(do_union = FALSE) %>%  st_cast("LINESTRING")
 # intersection of roads and wolf paths
 intersectMoveRoad <- st_intersection(movementData.lineString, allRoads.spatial) %>% st_cast("MULTIPOINT")
 ```
 
-## Basic Data Analysis: Center Point and Kernel Density
+## Basic Data Analysis: Center Point
 
-```{r centerPoint, echo=TRUE}
+Some individuals may have different affinities towards moving on roads. Therefore, we may want to put some information about the different individuals tracked on the map. A way to do this is to aggregate each individual’s tracks into a center point, where labels indicating individuals’ ids will be displayed on the map.
+
+```{r centerPoint, echo = TRUE, warning = FALSE, message = FALSE}
 movementData.centPoints <- movementData.lineString %>% group_by(individual.local.identifier) %>% st_centroid()
 
 ```
@@ -115,7 +132,9 @@ movementData.centPoints <- movementData.lineString %>% group_by(individual.local
 
 ## Basic Visualization with ggplot2
 
-```{r visualization, echo=TRUE}
+We now have all of the ingredients to make the final map! We want to make a map highlighting the locations where wolf activities on roads were the highest based on the tracking data. We will show areas with a high density of intersection points between wolf movement and roads.
+
+```{r visualization, echo = TRUE, warning = FALSE, message = FALSE}
 # with ggplot
 # requires x and y columns to create the heatmap:
 intersect.coords <- intersectMoveRoad %>% st_coordinates() %>% as.data.frame() %>% dplyr::select(-3)
@@ -128,7 +147,7 @@ mapLayout <- ggplot() + geom_sf(data = parkData.spatial) + stat_density2d(
 )  + scale_fill_continuous(type = "viridis") + geom_sf(aes(alpha = 0.1), data = intersectMoveRoad, colour = "brown1", size = 0.1) +
   geom_label_repel(aes(x = X, y = Y,
                        label = individual.local.identifier), data = movementData.centPoints,
-                   family = 'Segoe', 
+                   # family = 'Segoe', 
                    size = 3, 
                    box.padding = 0.2, point.padding = 0.3,
                    segment.color = 'grey50') + coord_sf(datum=st_crs(3005)) + labs(title = "Wolves Movement on Roads") +
@@ -141,13 +160,16 @@ print(mapLayout)
 ```
 
 
+```{r distance, echo=FALSE}
+## Data Analysis: Distance Calculation
 
-## Basic Data Analysis: Distance Calculation
-
-
+# distToRoads <- movementData.spatial %>% st_distance(allRoads.spatial, which = "Euclidean") %>% as.data.frame() %>% dplyr::rowwise() %>% mutate(min_dist = min()) %>% ungroup() # too expensive memory wise
+# movementData.sp <- movementData.spatial %>% as_Spatial()
+# allRoads.sp <- allRoads.spatial %>% as_Spatial()
+# distToRoads <- gDistance(movementData.sp, allRoads.sp) # didn't work properly
 
 ## Not so basic visualization with tmap
-```{r tmap, echo=TRUE}
-osm_site <- read_osm(area_bbox)
-tm_shape(osm_site) + tm_rgb() + tm_shape(parkData.spatial) + tm_polygons() + tm_shape(intersectMoveRoad) + tm_dots()
+
+# osm_site <- read_osm(area_bbox)
+# tm_shape(osm_site) + tm_rgb() + tm_shape(parkData.spatial) + tm_polygons() + tm_shape(intersectMoveRoad) + tm_dots()
 ```
