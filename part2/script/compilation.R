@@ -243,19 +243,3 @@ heatLayout <- mapLayout + stat_density2d(
   geom = "polygon"
 )
 
-
-
-#############
-# This stopped working :(
-#one way to plot that data: ## Adrian! this stopped working so I think I have to remove it. I don't know what went wrong.:(
-ggplot() + 
-  geom_sf(data = bc_neighbours(), mapping = aes(fill = name)) + 
-  geom_point(data=movementData, aes(x = location.long, y = location.lat, colour='black')) + 
-  coord_sf(datum = NA) +
-  scale_fill_viridis_d(name = "Jurisdiction") +
-  theme_minimal()
-
-# There are too many points and it's hard to read
-# This package should help you add a scale bar and a north to  your maps
-install.packages('ggsn')
-library (ggsn)
