@@ -121,7 +121,7 @@ as.data.frame(each_wolf)
 # First, you need to know your maximum coordinates, which you canobtain apllying the functions mean() and max() to your coordinate columns
 # What are the extreme coordinates?
 
-p<- get_map(location = c(-122, 50, -114,  56), source = "osm") # you can use add differnt zoom values after source, like zoom = 10
+p<- get_map(location = c(-122, 50, -114,  56), source = "osm") # you can use add different zoom values after source, like zoom = 10
 ggmap(p)+ 
   geom_point (data=random_100, aes(x=location.long, y=location.lat), size=0.05) 
   
@@ -137,16 +137,15 @@ ggmap(p)+
  ggmap(p) + 
   stat_density2d(data=movementData, 
                  aes(x = location.long, y = location.lat, fill = ..level.., alpha = 0.25), geom = "polygon")+ # geom can have different kinds like geom = "density2d"
-  geom_point(data=wolves[which(wolves$individual.local.identifier=="B042"),], 
+  geom_point(data=movementData,  # you can try this to look only for individual B042: [which(movementData$individual.local.identifier=="B042"),]
              aes(x = location.long, y = location.lat, stroke = 2), size =0.05, color="darkred") +
              theme(legend.position = "none")
              
 # Now try that with the data set that is grouped by tag
 
-# What if you wanted that each point reflected the number of observations per tag?
-# in the data set grouped by tag that is represented in the column count
-# hint: change size of geom_point
-# What happens if you want each tag to be represented by a different colour?  
+# What would you do if you wanted that each point reflected the number of observations per tag?
+# hint: change size of geom_point to match the count
+# What if you want each tag to be represented by a different colour?  
 
   
 # If you wanna focus on a specific region in the map you can just change your coordinates
@@ -243,19 +242,3 @@ heatLayout <- mapLayout + stat_density2d(
   geom = "polygon"
 )
 
-
-
-#############
-# This stopped working :(
-#one way to plot that data: ## Adrian! this stopped working so I think I have to remove it. I don't know what went wrong.:(
-ggplot() + 
-  geom_sf(data = bc_neighbours(), mapping = aes(fill = name)) + 
-  geom_point(data=movementData, aes(x = location.long, y = location.lat, colour='black')) + 
-  coord_sf(datum = NA) +
-  scale_fill_viridis_d(name = "Jurisdiction") +
-  theme_minimal()
-
-# There are too many points and it's hard to read
-# This package should help you add a scale bar and a north to  your maps
-install.packages('ggsn')
-library (ggsn)
