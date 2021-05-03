@@ -143,9 +143,9 @@ ggmap(p)+
              
 # Now try that with the data set that is grouped by tag
 
-# What if you wanted that each point reflected the number of observations per tag?
-# in the data set grouped by tag that is represented in the column count
+# What would you do if you wanted that each point reflected the number of observations per tag?
 # hint: change size of geom_point
+# in the data set grouped by tag that is represented in the column count
 # What happens if you want each tag to be represented by a different colour?  
 
   
