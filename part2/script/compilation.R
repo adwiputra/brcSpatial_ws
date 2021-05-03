@@ -121,7 +121,7 @@ as.data.frame(each_wolf)
 # First, you need to know your maximum coordinates, which you canobtain apllying the functions mean() and max() to your coordinate columns
 # What are the extreme coordinates?
 
-p<- get_map(location = c(-122, 50, -114,  56), source = "osm") # you can use add differnt zoom values after source, like zoom = 10
+p<- get_map(location = c(-122, 50, -114,  56), source = "osm") # you can use add different zoom values after source, like zoom = 10
 ggmap(p)+ 
   geom_point (data=random_100, aes(x=location.long, y=location.lat), size=0.05) 
   
@@ -137,7 +137,7 @@ ggmap(p)+
  ggmap(p) + 
   stat_density2d(data=movementData, 
                  aes(x = location.long, y = location.lat, fill = ..level.., alpha = 0.25), geom = "polygon")+ # geom can have different kinds like geom = "density2d"
-  geom_point(data=wolves[which(wolves$individual.local.identifier=="B042"),], 
+  geom_point(data=movementData,  # you can try this to look only for individual B042: [which(movementData$individual.local.identifier=="B042"),]
              aes(x = location.long, y = location.lat, stroke = 2), size =0.05, color="darkred") +
              theme(legend.position = "none")
              
